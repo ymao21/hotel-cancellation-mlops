@@ -1,0 +1,40 @@
+# --- Data: tracked by DVC, never by Git ---
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/*.dvc
+!data/raw/.gitignore
+data/processed/*
+
+# --- Generated outputs (re-created by the pipeline) ---
+reports/figures/*
+!reports/figures/.gitkeep
+reports/metrics/*
+!reports/metrics/.gitkeep
+reports/*.json
+reports/*.md
+
+# --- ML tooling ---
+mlruns/
+mlartifacts/
+*.pkl
+*.joblib
+
+# --- Airflow (local runs) ---
+airflow_home/
+logs/
+
+# --- Python / env ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- OS / editor ---
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+.idea/

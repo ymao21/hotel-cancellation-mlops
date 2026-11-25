@@ -1,0 +1,6 @@
+-r requirements.txt
+# Data versioning, linting, testing
+dvc>=3.50
+ruff>=0.6
+pytest>=8.0
+ipykernel>=6.29

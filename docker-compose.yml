@@ -1,0 +1,23 @@
+# Airflow in one container (`airflow standalone`) for local development / demos.
+#   docker compose up -d          -> UI at http://localhost:8080
+#   docker compose logs -f airflow
+#   docker compose down
+# The whole repo is mounted, so edits to dags/ and src/ show up without rebuilding.
+
+services:
+  airflow:
+    image: apache/airflow:2.10.5-python3.11
+    container_name: hotel-airflow
+    command: standalone
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/project/dags
+      AIRFLOW__CORE__DAG_DIR_LIST_INTERVAL: "30"
+      HOTEL_PROJECT_ROOT: /opt/airflow/project
+      PYTHONPATH: /opt/airflow/project
+      # Extra libs our tasks need (installed when the container starts).
+      _PIP_ADDITIONAL_REQUIREMENTS: "scikit-learn==1.5.2 seaborn==0.13.2 pyyaml"
+    volumes:
+      - ./:/opt/airflow/project
