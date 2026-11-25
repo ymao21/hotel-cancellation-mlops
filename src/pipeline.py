@@ -1,12 +1,16 @@
 """Pipeline steps. Each step reads its inputs from disk and writes its outputs to
-disk, so the same functions run from the terminal or as Airflow tasks.
+disk (plus MLflow for the training steps), so the same functions run from the
+terminal or as separate Airflow tasks.
 
 Run everything locally (no Airflow):
     python -m src.pipeline
+Run one or more steps (this is what each Airflow task does):
+    python -m src.pipeline --step automl --step train
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
 
 from src.config import load_config, resolve_path
@@ -65,16 +69,58 @@ def step_baseline(config_path: str | None = None) -> dict:
     return {k: round(v["roc_auc"], 4) for k, v in res["models"].items()}
 
 
-STEPS = [step_validate, step_clean, step_split, step_eda, step_baseline]
+def step_automl(config_path: str | None = None) -> dict:
+    from src.train import run_automl
+
+    res = run_automl(load_config(config_path))
+    return {"best_estimator": res["best_estimator"], "cv_roc_auc": res["best_cv_roc_auc"]}
 
 
-def run_all(config_path: str | None = None) -> None:
-    for step in STEPS:
-        logger.info("=== %s ===", step.__name__)
-        step(config_path)
+def step_train(config_path: str | None = None) -> dict:
+    from src.train import train_best_model
+
+    return train_best_model(load_config(config_path))
+
+
+def step_evaluate(config_path: str | None = None) -> dict:
+    from src.evaluate import evaluate_model
+
+    res = evaluate_model(load_config(config_path))
+    return {"test_roc_auc": res["test"]["roc_auc"], "baseline_roc_auc": res["baseline_roc_auc"]}
+
+
+def step_register(config_path: str | None = None) -> dict:
+    from src.evaluate import register_model
+
+    return register_model(load_config(config_path))
+
+
+# In run order. The Airflow DAG runs the same steps as separate tasks.
+STEPS = {
+    "validate": step_validate,
+    "clean": step_clean,
+    "split": step_split,
+    "eda": step_eda,
+    "baseline": step_baseline,
+    "automl": step_automl,
+    "train": step_train,
+    "evaluate": step_evaluate,
+    "register": step_register,
+}
+
+
+def run_all(config_path: str | None = None, steps: list[str] | None = None) -> None:
+    for name in steps or list(STEPS):
+        logger.info("=== step: %s ===", name)
+        logger.info("%s -> %s", name, STEPS[name](config_path))
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
-    run_all()
+    parser = argparse.ArgumentParser(description="Run the hotel cancellation pipeline.")
+    parser.add_argument("--step", action="append", choices=list(STEPS),
+                        help="run only this step (repeat to run several, in the order given)")
+    parser.add_argument("--config", default=None, help="config file (default: config/config.yaml)")
+    args = parser.parse_args()
+    run_all(args.config, args.step)
     print("Pipeline finished. See reports/ for outputs.")

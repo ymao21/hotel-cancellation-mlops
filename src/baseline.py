@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 
+import pandas as pd
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
@@ -35,18 +36,23 @@ def evaluate_baselines(cfg: dict) -> dict:
         "logistic_regression": LogisticRegression(max_iter=2000, random_state=seed),
     }
     results = {}
+    preds = pd.DataFrame({"y_true": y_test.to_numpy()})
     for name, clf in models.items():
         pipe = Pipeline([("prep", build_preprocessor(cfg, train)), ("model", clf)])
         pipe.fit(X_train, y_train)
         proba = pipe.predict_proba(X_test)[:, 1]
         results[name] = metrics_from_config(y_test, proba, cfg)
+        preds[name] = proba
         save_eval_plots(
             y_test, proba, cfg["metric"]["threshold"], resolve_path(cfg, "figures_dir"), name
         )
         logger.info("%s: %s = %.4f", name, PRIMARY_METRIC, results[name][PRIMARY_METRIC])
 
     out = {"primary_metric": PRIMARY_METRIC, "evaluated_on": "test", "models": results}
-    save_json(out, resolve_path(cfg, "metrics_dir") / "baseline_metrics.json")
+    metrics_dir = resolve_path(cfg, "metrics_dir")
+    save_json(out, metrics_dir / "baseline_metrics.json")
+    # Test-set probabilities, so the model's ROC chart can show the baseline curve too.
+    preds.to_csv(metrics_dir / "baseline_test_predictions.csv", index=False)
     return out
 
 

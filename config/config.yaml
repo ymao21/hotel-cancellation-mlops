@@ -13,6 +13,7 @@ paths:
   reports_dir: reports
   figures_dir: reports/figures
   metrics_dir: reports/metrics
+  mlflow_artifacts: mlartifacts   # where a local (sqlite) MLflow store keeps model files
 
 target: is_canceled
 
@@ -22,8 +23,11 @@ cleaning:
     - reservation_status        # Canceled / Check-Out / No-Show = the answer
     - reservation_status_date   # date the status was set (after the outcome)
     - assigned_room_type        # assigned at check-in, not known at booking time
-  # The raw file has ~32k exact duplicate rows. Duplicates that land in both
-  # train and test inflate the test score, so we drop them by default.
+    - required_car_parking_spaces  # 0 of 7,416 bookings with a parking request were
+                                   # canceled: likely only filled in at check-in
+  # The raw file has 31,994 exact duplicate rows (about 33k once the leakage
+  # columns are dropped). Duplicates that land in both train and test inflate the
+  # test score, so we drop them by default. This is the last cleaning step.
   drop_duplicates: true
   max_adr: 5000                 # one extreme outlier (adr = 5400) is removed
 
@@ -51,7 +55,6 @@ features:
     - booking_changes
     - days_in_waiting_list
     - adr
-    - required_car_parking_spaces
     - total_of_special_requests
     - has_agent
     - has_company
@@ -75,3 +78,22 @@ metric:
   # Illustrative business costs (per booking) for the "expected cost" view.
   cost_false_negative: 100      # missed cancellation -> empty room / lost revenue
   cost_false_positive: 150      # predicted cancel but guest arrives -> overbooking
+
+training:
+  experiment_name: hotel-cancellation     # MLflow experiment
+  # Where MLflow keeps runs. A relative sqlite path is resolved from the project root.
+  # The MLFLOW_TRACKING_URI environment variable wins (Docker sets http://mlflow:5000).
+  tracking_uri: sqlite:///mlflow.db
+  registered_model_name: hotel_cancel_model
+  model_alias: champion         # deployment loads models:/hotel_cancel_model@champion
+  # Quality gate: only register the model if its test ROC-AUC beats the
+  # logistic-regression baseline by at least `min_gain_over_baseline`.
+  require_beat_baseline: true
+  min_gain_over_baseline: 0.0
+  permutation_repeats: 5        # repeats for the feature-importance chart
+  automl:
+    time_budget_s: 300          # FLAML search time (seconds)
+    eval_method: cv
+    n_splits: 5                 # 5-fold cross-validation on the TRAIN set only
+    # Algorithm families FLAML compares (FLAML codes, see src/labels.py)
+    estimators: [lgbm, xgboost, rf, extra_tree, lrl1]

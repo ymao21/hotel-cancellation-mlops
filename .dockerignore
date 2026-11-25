@@ -1,0 +1,4 @@
+# The Airflow image only needs requirements.txt (the code is mounted at run time),
+# so send nothing else to the Docker build (keeps .venv, data and MLflow files out).
+*
+!requirements.txt

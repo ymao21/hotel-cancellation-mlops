@@ -16,6 +16,8 @@ reports/*.md
 # --- ML tooling ---
 mlruns/
 mlartifacts/
+mlflow.db
+mlflow_server/
 *.pkl
 *.joblib
 

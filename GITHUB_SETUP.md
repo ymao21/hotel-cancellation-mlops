@@ -18,7 +18,7 @@ Optional but easiest for login: install the GitHub CLI (`brew install gh`), then
 cd ~/Desktop/mlops/hotel-cancellation-mlops
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-ruff check . && pytest              # should print "8 passed"
+ruff check . && pytest              # every test should pass
 ```
 
 ## 2. Create the GitHub repo

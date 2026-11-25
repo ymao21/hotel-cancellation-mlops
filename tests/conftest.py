@@ -76,8 +76,12 @@ def cfg() -> dict:
 
 
 @pytest.fixture
-def tmp_project(tmp_path, cfg, raw_df):
-    """A throwaway project dir with synthetic raw data + a config pointing at it."""
+def tmp_project(tmp_path, cfg, raw_df, monkeypatch):
+    """A throwaway project dir with synthetic raw data + a config pointing at it.
+
+    AutoML runs for a few seconds only, and MLflow writes to a sqlite file in tmp_path.
+    """
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)  # never log to a real server
     raw_path = tmp_path / "data" / "raw" / "hotel_bookings.csv"
     raw_path.parent.mkdir(parents=True)
     raw_df.to_csv(raw_path, index=False)
@@ -90,6 +94,15 @@ def tmp_project(tmp_path, cfg, raw_df):
         "reports_dir": str(tmp_path / "reports"),
         "figures_dir": str(tmp_path / "reports/figures"),
         "metrics_dir": str(tmp_path / "reports/metrics"),
+        "mlflow_artifacts": str(tmp_path / "mlartifacts"),
+    }
+    cfg["training"] = {
+        **cfg["training"],
+        "tracking_uri": f"sqlite:///{tmp_path / 'mlflow.db'}",
+        "require_beat_baseline": False,  # synthetic data is linear, so the gate is tested apart
+        "permutation_repeats": 1,
+        "automl": {**cfg["training"]["automl"], "time_budget_s": 6, "n_splits": 3,
+                   "estimators": ["lgbm", "lrl1"]},
     }
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg))

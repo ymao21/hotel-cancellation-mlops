@@ -1,7 +1,8 @@
 """Evaluation metric for the cancellation model.
 
 Primary metric: ROC-AUC
-    - threshold-independent, robust to the ~37/63 (raw) class imbalance
+    - threshold-independent, robust to the class imbalance (~28% canceled after
+      cleaning, 37% in the raw file)
     - used to rank models and as the AutoML objective
 Secondary (at a decision threshold): F1, precision, recall for the cancel class,
 plus accuracy, PR-AUC, confusion matrix and an illustrative business cost.
@@ -13,14 +14,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-from sklearn.metrics import (  # noqa: E402
-    ConfusionMatrixDisplay,
-    RocCurveDisplay,
+import numpy as np
+from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
     confusion_matrix,
@@ -80,27 +75,25 @@ def best_f1_threshold(y_true, y_proba) -> float:
 
 
 def save_eval_plots(y_true, y_proba, threshold: float, out_dir: Path, name: str) -> list[Path]:
-    """ROC curve + confusion matrix PNGs for the slides / MLflow artifacts."""
+    """ROC curve + confusion matrix PNGs in the project chart style (slides / MLflow)."""
+    from src import model_charts
+    from src import plot_style as ps
+    from src.labels import MODEL_NAMES
+
+    label = MODEL_NAMES.get(name, name.replace("_", " ").capitalize())
+    m = compute_metrics(y_true, y_proba, threshold)
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = []
-
-    fig, ax = plt.subplots(figsize=(5, 5))
-    RocCurveDisplay.from_predictions(y_true, y_proba, ax=ax, name=name)
-    ax.plot([0, 1], [0, 1], "k--", lw=1)
-    ax.set_title(f"ROC curve - {name}")
-    p = out_dir / f"roc_{name}.png"
-    fig.savefig(p, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    paths.append(p)
-
-    fig, ax = plt.subplots(figsize=(5, 4))
-    y_pred = (np.asarray(y_proba) >= threshold).astype(int)
-    ConfusionMatrixDisplay.from_predictions(
-        y_true, y_pred, display_labels=["Not canceled", "Canceled"], ax=ax, colorbar=False
+    roc = model_charts.roc_chart(
+        [{"label": f"{label} ({m['roc_auc']:.3f})", "y_true": y_true, "proba": y_proba,
+          "color": ps.MID_GRAY, "lw": 2.4}],
+        out_dir / f"roc_{name}.png",
+        f"Baseline: {label}, ROC-AUC {m['roc_auc']:.3f}",
+        "Test set. Baselines set the bar the AutoML model has to beat.",
     )
-    ax.set_title(f"Confusion matrix - {name} (t={threshold:.2f})")
-    p = out_dir / f"confusion_{name}.png"
-    fig.savefig(p, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    paths.append(p)
-    return paths
+    cm = model_charts.confusion_chart(
+        m, out_dir / f"confusion_{name}.png",
+        f"Baseline: {label} at a {threshold:.2f} threshold",
+        f"Test set. It catches {m['recall']:.0%} of cancellations; when it flags a booking it "
+        f"is right {m['precision']:.0%} of the time.",
+    )
+    return [roc, cm]

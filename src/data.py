@@ -108,12 +108,7 @@ def clean(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     df = df.drop(columns=leak)
     record(f"drop leakage columns {leak}")
 
-    # 3.2 Exact duplicates
-    if c.get("drop_duplicates", True):
-        df = df.drop_duplicates()
-        record("drop exact duplicate rows")
-
-    # 3.3 Missing values
+    # 3.2 Missing values + recodes
     df["children"] = df["children"].fillna(0)
     if "country" in df:
         df["country"] = df["country"].fillna("Unknown")
@@ -123,16 +118,16 @@ def clean(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
             df = df.drop(columns=col)
     if "meal" in df:  # per the dataset paper, "Undefined" and "SC" both mean no meal
         df["meal"] = df["meal"].replace("Undefined", "SC")
-    record("fill missing values (children, country, agent/company -> flags)")
+    record("fill missing values (children, country), agent/company -> flags, meal Undefined -> SC")
 
-    # 3.4 Impossible / extreme rows
+    # 3.3 Impossible / extreme rows
     guests = df["adults"] + df["children"] + df["babies"]
     df = df[guests > 0]
     record("remove bookings with 0 guests")
     df = df[(df["adr"] >= 0) & (df["adr"] <= c.get("max_adr", 5000))]
     record("remove negative / extreme adr")
 
-    # 3.5 Types + engineered features
+    # 3.4 Types + engineered features
     df["children"] = df["children"].astype(int)
     month = df["arrival_date_month"]
     df["arrival_month_num"] = (
@@ -155,6 +150,12 @@ def clean(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     df["total_nights"] = df["stays_in_weekend_nights"] + df["stays_in_week_nights"]
     df["total_guests"] = df["adults"] + df["children"] + df["babies"]
     record("parse arrival date + engineer features")
+
+    # 3.5 Duplicates. Done last, so rows that only became identical in 3.2
+    #     (e.g. two different agent IDs -> has_agent = 1) are removed too.
+    if c.get("drop_duplicates", True):
+        df = df.drop_duplicates()
+        record("drop duplicate rows (identical in every remaining column)")
 
     df = df.reset_index(drop=True)
     report = {

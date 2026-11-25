@@ -1,14 +1,37 @@
-# Airflow in one container (`airflow standalone`) for local development / demos.
-#   docker compose up -d          -> UI at http://localhost:8080
-#   docker compose logs -f airflow
+# Local MLOps stack for development and the demo:
+#   mlflow   tracking server + model registry   http://localhost:5001
+#   airflow  scheduler + web UI (standalone)    http://localhost:8080
+#
+#   docker compose up -d --build      first time: builds the Airflow image (~5-10 min)
+#   docker compose exec airflow cat /opt/airflow/standalone_admin_password.txt
 #   docker compose down
-# The whole repo is mounted, so edits to dags/ and src/ show up without rebuilding.
+# The repo is mounted into the Airflow container, so edits to dags/ and src/ show up
+# without rebuilding. Rebuild (--build) only after changing requirements.txt.
+# Host port 5001, not 5000: macOS uses port 5000 for AirPlay.
 
 services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    container_name: hotel-mlflow
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5001,127.0.0.1,127.0.0.1:5001
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./mlflow_server:/mlflow   # runs, models and the registry survive restarts
+
   airflow:
-    image: apache/airflow:2.10.5-python3.11
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    image: hotel-airflow:2.10.5
     container_name: hotel-airflow
     command: standalone
+    depends_on:
+      - mlflow
     ports:
       - "8080:8080"
     environment:
@@ -16,8 +39,7 @@ services:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/project/dags
       AIRFLOW__CORE__DAG_DIR_LIST_INTERVAL: "30"
       HOTEL_PROJECT_ROOT: /opt/airflow/project
-      PYTHONPATH: /opt/airflow/project
-      # Extra libs our tasks need (installed when the container starts).
-      _PIP_ADDITIONAL_REQUIREMENTS: "scikit-learn==1.5.2 seaborn==0.13.2 pyyaml"
+      HOTEL_PYTHON: /opt/airflow/ml-venv/bin/python   # the project environment from the image
+      MLFLOW_TRACKING_URI: http://mlflow:5000         # log runs + models to the mlflow service
     volumes:
       - ./:/opt/airflow/project
